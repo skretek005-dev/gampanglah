@@ -7,6 +7,7 @@ end
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser") -- Layanan untuk Anti-AFK
 
 local autoCatchActive = false
 local autoSellActive = false
@@ -14,8 +15,6 @@ local autoSellActive = false
 -- ==========================================
 -- PENGATURAN FILTER IKAN YANG DIJUAL
 -- ==========================================
--- Ikan dengan rarity di bawah ini AKAN DIJUAL OTOMATIS.
--- Jika Anda dapat Legendary, Mythical, dll, ikan TIDAK AKAN dijual.
 local raritiesToSell = {
     ["Common"] = true,
     ["Uncommon"] = true,
@@ -70,7 +69,22 @@ AutoSellBtn.Text = "Smart Sell: OFF"
 AutoSellBtn.Parent = MainFrame
 
 -- ==========================================
--- LOGIKA 1: PEMBAJAKAN SINYAL AUTO CATCH
+-- LOGIKA 1: ANTI-AFK (Otomatis Aktif)
+-- ==========================================
+LocalPlayer.Idled:Connect(function()
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+        -- Simulasi sentuhan/klik agar server mereset waktu AFK
+        VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+    print("🛡️ Anti-AFK bekerja! Menghindari kick idle 20 menit.")
+end)
+
+-- ==========================================
+-- LOGIKA 2: PEMBAJAKAN SINYAL AUTO CATCH
 -- ==========================================
 local FishingSystem = ReplicatedStorage:WaitForChild("FishingSystem", 5)
 local FishGiver = FishingSystem and FishingSystem:WaitForChild("FishGiver", 5)
@@ -123,13 +137,12 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
 end))
 
 -- ==========================================
--- LOGIKA 2: SMART AUTO SELL (FILTER)
+-- LOGIKA 3: SMART AUTO SELL (FILTER)
 -- ==========================================
 local FishCaughtResult = FishingSystem and FishingSystem:WaitForChild("FishCaughtResult", 5)
 local SellFish = FishingSystem and FishingSystem:WaitForChild("SellFish", 5)
 
 if FishCaughtResult and SellFish then
-    -- Memasang radar: Mencegat setiap ikan yang baru saja masuk ke tas
     FishCaughtResult.OnClientEvent:Connect(function(data)
         if autoSellActive and type(data) == "table" then
             
@@ -138,13 +151,10 @@ if FishCaughtResult and SellFish then
             local fishId = data.uniqueId
             local name = data.name
             
-            -- Mengecek apakah kelangkaan ikan tersebut ada di daftar jual (Common/Uncommon/Rare/Epic)
             if rarity and raritiesToSell[rarity] then
                 task.spawn(function()
-                    task.wait(1.5) -- Jeda aman 1.5 detik membiarkan ikan masuk tas dulu
-                    
+                    task.wait(1.5)
                     pcall(function()
-                        -- Mengeksekusi transaksi rahasia SellSingle!
                         SellFish:FireServer("SellSingle", {
                             ["weight"] = weight,
                             ["rarity"] = rarity,
@@ -153,7 +163,6 @@ if FishCaughtResult and SellFish then
                     end)
                 end)
             else
-                -- Jika ikannya langka (Legendary dll), abaikan dan simpan!
                 print("🌟 IKAN SPESIAL DISIMPAN: " .. tostring(name) .. " (" .. tostring(rarity) .. ")")
             end
             
@@ -186,4 +195,4 @@ AutoSellBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("✅ Fitur God Auto Catch & Smart Sell Siap Digunakan!")
+print("✅ Fitur God Auto Catch + Smart Sell + Anti-AFK Siap!")
