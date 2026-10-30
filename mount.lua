@@ -7,7 +7,7 @@ end
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local VirtualUser = game:GetService("VirtualUser") -- Layanan untuk Anti-AFK
+local VirtualUser = game:GetService("VirtualUser") 
 
 local autoCatchActive = false
 local autoSellActive = false
@@ -29,6 +29,22 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AutoFishHub"
 ScreenGui.Parent = CoreGui
 
+-- Tombol Kecil untuk Membuka Menu (Awalnya Sembunyi)
+local OpenBtn = Instance.new("TextButton")
+OpenBtn.Size = UDim2.new(0, 45, 0, 45)
+OpenBtn.Position = UDim2.new(0, 10, 0.5, -20)
+OpenBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenBtn.BorderSizePixel = 2
+OpenBtn.BorderColor3 = Color3.fromRGB(60, 60, 60)
+OpenBtn.TextSize = 22
+OpenBtn.Text = "🎣"
+OpenBtn.Active = true
+OpenBtn.Draggable = true
+OpenBtn.Visible = false
+OpenBtn.Parent = ScreenGui
+
+-- Bingkai Menu Utama
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 250, 0, 190)
 MainFrame.Position = UDim2.new(0.5, -125, 0.2, 0)
@@ -39,11 +55,22 @@ MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
+-- Tombol Tutup (X)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -35, 0, 5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.Text = "X"
+CloseBtn.Parent = MainFrame
+
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 40)
 Title.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 18
+Title.TextSize = 16
 Title.Font = Enum.Font.GothamBold
 Title.Text = "🎣 God Hub + Smart Sell"
 Title.Parent = MainFrame
@@ -69,22 +96,33 @@ AutoSellBtn.Text = "Smart Sell: OFF"
 AutoSellBtn.Parent = MainFrame
 
 -- ==========================================
--- LOGIKA 1: ANTI-AFK (Otomatis Aktif)
+-- LOGIKA SEMBUNYIKAN GUI
+-- ==========================================
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    OpenBtn.Visible = true
+end)
+
+OpenBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = true
+    OpenBtn.Visible = false
+end)
+
+-- ==========================================
+-- LOGIKA ANTI-AFK 
 -- ==========================================
 LocalPlayer.Idled:Connect(function()
     pcall(function()
         VirtualUser:CaptureController()
         VirtualUser:ClickButton2(Vector2.new())
-        -- Simulasi sentuhan/klik agar server mereset waktu AFK
         VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
         task.wait(1)
         VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
     end)
-    print("🛡️ Anti-AFK bekerja! Menghindari kick idle 20 menit.")
 end)
 
 -- ==========================================
--- LOGIKA 2: PEMBAJAKAN SINYAL AUTO CATCH
+-- LOGIKA PEMBAJAKAN SINYAL AUTO CATCH
 -- ==========================================
 local FishingSystem = ReplicatedStorage:WaitForChild("FishingSystem", 5)
 local FishGiver = FishingSystem and FishingSystem:WaitForChild("FishGiver", 5)
@@ -102,11 +140,9 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             task.spawn(function()
                 task.wait(0.1)
                 
-                -- Kirim sinyal sesuai urutan log server agar legal
                 if CleanupCast then pcall(function() CleanupCast:FireServer() end) end
                 if FishGiver then pcall(function() FishGiver:FireServer(tableData) end) end
                 
-                -- Hancurkan UI minigame secara instan
                 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
                 if PlayerGui then
                     for _, ui in pairs(PlayerGui:GetDescendants()) do
@@ -117,7 +153,6 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                     end
                 end
                 
-                -- Paksa berhenti animasi memancing
                 local character = LocalPlayer.Character
                 local humanoid = character and character:FindFirstChildOfClass("Humanoid")
                 if humanoid then
@@ -137,7 +172,7 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
 end))
 
 -- ==========================================
--- LOGIKA 3: SMART AUTO SELL (FILTER)
+-- LOGIKA SMART AUTO SELL (FILTER)
 -- ==========================================
 local FishCaughtResult = FishingSystem and FishingSystem:WaitForChild("FishCaughtResult", 5)
 local SellFish = FishingSystem and FishingSystem:WaitForChild("SellFish", 5)
@@ -149,7 +184,6 @@ if FishCaughtResult and SellFish then
             local rarity = data.rarity
             local weight = data.weight
             local fishId = data.uniqueId
-            local name = data.name
             
             if rarity and raritiesToSell[rarity] then
                 task.spawn(function()
@@ -162,10 +196,7 @@ if FishCaughtResult and SellFish then
                         })
                     end)
                 end)
-            else
-                print("🌟 IKAN SPESIAL DISIMPAN: " .. tostring(name) .. " (" .. tostring(rarity) .. ")")
             end
-            
         end
     end)
 end
@@ -194,5 +225,3 @@ AutoSellBtn.MouseButton1Click:Connect(function()
         AutoSellBtn.Text = "Smart Sell: OFF"
     end
 end)
-
-print("✅ Fitur God Auto Catch + Smart Sell + Anti-AFK Siap!")
