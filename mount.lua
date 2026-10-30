@@ -9,16 +9,29 @@ local LocalPlayer = Players.LocalPlayer
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local autoCatchActive = false
+local autoSellActive = false
 
 -- ==========================================
--- MEMBUAT TAMPILAN GUI
+-- PENGATURAN FILTER IKAN YANG DIJUAL
+-- ==========================================
+-- Ikan dengan rarity di bawah ini AKAN DIJUAL OTOMATIS.
+-- Jika Anda dapat Legendary, Mythical, dll, ikan TIDAK AKAN dijual.
+local raritiesToSell = {
+    ["Common"] = true,
+    ["Uncommon"] = true,
+    ["Rare"] = true,
+    ["Epic"] = true
+}
+
+-- ==========================================
+-- MEMBUAT TAMPILAN GUI KHUSUS HP
 -- ==========================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AutoFishHub"
 ScreenGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 250, 0, 130)
+MainFrame.Size = UDim2.new(0, 250, 0, 190)
 MainFrame.Position = UDim2.new(0.5, -125, 0.2, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 MainFrame.BorderSizePixel = 2
@@ -33,7 +46,7 @@ Title.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 18
 Title.Font = Enum.Font.GothamBold
-Title.Text = "🎣 God Auto Fish"
+Title.Text = "🎣 God Hub + Smart Sell"
 Title.Parent = MainFrame
 
 local AutoCatchBtn = Instance.new("TextButton")
@@ -46,12 +59,22 @@ AutoCatchBtn.TextSize = 14
 AutoCatchBtn.Text = "God Auto Catch: OFF"
 AutoCatchBtn.Parent = MainFrame
 
+local AutoSellBtn = Instance.new("TextButton")
+AutoSellBtn.Size = UDim2.new(0.8, 0, 0, 50)
+AutoSellBtn.Position = UDim2.new(0.1, 0, 0, 120)
+AutoSellBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+AutoSellBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoSellBtn.Font = Enum.Font.GothamSemibold
+AutoSellBtn.TextSize = 14
+AutoSellBtn.Text = "Smart Sell: OFF"
+AutoSellBtn.Parent = MainFrame
+
 -- ==========================================
--- LOGIKA PEMBAJAKAN SINYAL (HOOKING)
+-- LOGIKA 1: PEMBAJAKAN SINYAL AUTO CATCH
 -- ==========================================
-local FishingSystem = ReplicatedStorage:WaitForChild("FishingSystem")
-local FishGiver = FishingSystem:WaitForChild("FishGiver")
-local CleanupCast = FishingSystem:WaitForChild("CleanupCast")
+local FishingSystem = ReplicatedStorage:WaitForChild("FishingSystem", 5)
+local FishGiver = FishingSystem and FishingSystem:WaitForChild("FishGiver", 5)
+local CleanupCast = FishingSystem and FishingSystem:WaitForChild("CleanupCast", 5)
 
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
@@ -60,21 +83,16 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     if not checkcaller() and method == "FireServer" then
         if self.Name == "MinigameStarted" and autoCatchActive then
             local args = {...}
-            local tableData = args[1] -- Mengambil data koordinat asli dari game
+            local tableData = args[1]
             
             task.spawn(function()
-                -- 1. Beri jeda 0.1 detik agar MinigameStarted terkirim lebih dulu
                 task.wait(0.1)
                 
-                -- 2. Kirim sinyal CleanupCast (Mereset kail di server sesuai log)
-                pcall(function() CleanupCast:FireServer() end)
+                -- Kirim sinyal sesuai urutan log server agar legal
+                if CleanupCast then pcall(function() CleanupCast:FireServer() end) end
+                if FishGiver then pcall(function() FishGiver:FireServer(tableData) end) end
                 
-                -- 3. Langsung kirim sinyal FishGiver menggunakan data asli dari game!
-                pcall(function() FishGiver:FireServer(tableData) end)
-                
-                print("🐟 Ikan berhasil di-Bypass!")
-                
-                -- 4. Hancurkan layar minigame secara instan
+                -- Hancurkan UI minigame secara instan
                 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
                 if PlayerGui then
                     for _, ui in pairs(PlayerGui:GetDescendants()) do
@@ -85,7 +103,7 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                     end
                 end
                 
-                -- 5. Bebaskan karakter dari animasi memancing (Force Stop Animation)
+                -- Paksa berhenti animasi memancing
                 local character = LocalPlayer.Character
                 local humanoid = character and character:FindFirstChildOfClass("Humanoid")
                 if humanoid then
@@ -97,13 +115,51 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                 end
             end)
             
-            -- Biarkan sinyal MinigameStarted lolos ke server
             return oldNamecall(self, ...)
         end
     end
     
     return oldNamecall(self, ...)
 end))
+
+-- ==========================================
+-- LOGIKA 2: SMART AUTO SELL (FILTER)
+-- ==========================================
+local FishCaughtResult = FishingSystem and FishingSystem:WaitForChild("FishCaughtResult", 5)
+local SellFish = FishingSystem and FishingSystem:WaitForChild("SellFish", 5)
+
+if FishCaughtResult and SellFish then
+    -- Memasang radar: Mencegat setiap ikan yang baru saja masuk ke tas
+    FishCaughtResult.OnClientEvent:Connect(function(data)
+        if autoSellActive and type(data) == "table" then
+            
+            local rarity = data.rarity
+            local weight = data.weight
+            local fishId = data.uniqueId
+            local name = data.name
+            
+            -- Mengecek apakah kelangkaan ikan tersebut ada di daftar jual (Common/Uncommon/Rare/Epic)
+            if rarity and raritiesToSell[rarity] then
+                task.spawn(function()
+                    task.wait(1.5) -- Jeda aman 1.5 detik membiarkan ikan masuk tas dulu
+                    
+                    pcall(function()
+                        -- Mengeksekusi transaksi rahasia SellSingle!
+                        SellFish:FireServer("SellSingle", {
+                            ["weight"] = weight,
+                            ["rarity"] = rarity,
+                            ["fishId"] = fishId
+                        })
+                    end)
+                end)
+            else
+                -- Jika ikannya langka (Legendary dll), abaikan dan simpan!
+                print("🌟 IKAN SPESIAL DISIMPAN: " .. tostring(name) .. " (" .. tostring(rarity) .. ")")
+            end
+            
+        end
+    end)
+end
 
 -- ==========================================
 -- LOGIKA TOMBOL 
@@ -119,4 +175,15 @@ AutoCatchBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("✅ God Auto Fish (Full Protocol) Siap!")
+AutoSellBtn.MouseButton1Click:Connect(function()
+    autoSellActive = not autoSellActive
+    if autoSellActive then
+        AutoSellBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        AutoSellBtn.Text = "Smart Sell: ON"
+    else
+        AutoSellBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        AutoSellBtn.Text = "Smart Sell: OFF"
+    end
+end)
+
+print("✅ Fitur God Auto Catch & Smart Sell Siap Digunakan!")
